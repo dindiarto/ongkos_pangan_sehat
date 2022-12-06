@@ -1,0 +1,112 @@
+---
+title: "Eksplorasi Data Harga Pangan Indonesia"
+author: "Dony Indiarto"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data harga pangan
+
+Data harga pangan merupakan salah satu masukan untuk menghitung ongkos pangan sehat di suatu waktu dan tempat yang spesifik.
+
+Data harga pangan diperoleh dari data portal [HDX](https://data.humdata.org/dataset/wfp-food-prices-for-indonesia) versi tanggal 27 November 2022. Data tersebut merupakan irisan dari database Harga Pangan Global World Food Programme (WFP) yang  mencakup jenis makanan seperti jagung, beras, kacang-kacangan, ikan, dan gula untuk 98 negara dan sekitar 3000 pasar.
+
+```{r include=FALSE}
+# Load libraries
+library(tidyverse)
+library(ggExtra)
+library(lubridate)
+library(maps)
+```
+
+# Eksplorasi data
+
+## Dimensi data
+```{r}
+fp <- read_csv("data/wfp_food_prices_idn.csv")
+
+glimpse(fp)
+```
+
+
+## Cakupan temporal
+
+```{r}
+# Jumlah bulan ketersediaan data
+fp |>
+  select(date) |>
+  distinct() |> 
+  nrow()
+```
+```{r}
+# Sebaran ketersediaan data
+fp |>
+  select(date) |>
+  distinct() |>
+  slice(-1) |>
+  mutate(tag = 1) |>
+  mutate(date = as_date(date),
+                            month = month(date),
+                            year = year(date)) |>
+  pivot_wider(id_cols = month, values_from = tag, names_from = year)
+```
+
+## Aspek keterwakilan spasial
+
+### Provinsi dan Kabupaten/Kota yang tercakup beserta jumlah pasarnya
+
+
+```{r}
+cakupan_wilayah <- fp |>  
+  slice(-1) |> 
+  filter(market!="National Average") |> 
+  select(admin1, admin2, market) |> distinct() |> 
+  group_by(admin1, admin2) |> tally()
+
+print(cakupan_wilayah)
+```
+Data mencakup 34 Provinsi, 106 Kabupaten/Kota, dan 212 pasar daerah.
+```{r}
+cakupan_wilayah |> pull(n) |> sum()
+```
+
+```{r fig.height=10, fig.width=16}
+map_ina <- map_data('world')[map_data('world')$region == "Indonesia",]
+
+market_ina <-fp |>  
+  slice(-1) |> 
+  filter(market!="National Average") |> 
+  select(admin1, admin2, market, latitude, longitude) |> 
+  distinct() |> mutate(longitude = as.numeric(longitude),
+                       latitude = as.numeric(latitude)) #|> 
+  #sf::st_as_sf( coords = c("longitude", "latitude"), 
+   #              crs = 4326, agr = "constant")
+
+## The map (maps + ggplot2 )
+ggplot() +
+    ## First layer: worldwide map
+    geom_polygon(data = map_data("world"),
+                 aes(x=long, y=lat, group = group),
+                 color = '#9c9c9c', fill = '#f3f3f3') +
+    ## Second layer: Country map
+    geom_polygon(data = map_ina,
+                 aes(x=long, y=lat, group = group),
+                 color = 'red', fill = 'pink') +
+  geom_point(data = market_ina, 
+             aes(x=longitude, y=latitude, group = market), size = 4, shape = 22, fill = "darkgreen", alpha = 0.5) +
+    coord_map()+
+    coord_fixed(
+                xlim = c( 96, 140),
+                ylim = c(-11.5, 6.5)) +
+  theme_minimal()
+
+
+
+```
+
+
+## Data kosong
